@@ -1,71 +1,45 @@
-name: Build OBS for AARCH64
+name: Build OBS for Linux AARCH64 with MPP support
 
 on:
   push:
     branches:
-      - main
-  pull_request:
-    branches:
-      - main
-
-env:
-  PLATFORM: aarch64-linux-gnu
+      - master
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v2
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v1
-
-      - name: Check out code
+      - name: Checkout repository
         uses: actions/checkout@v2
 
-      - name: Install build dependencies
+      - name: Install dependencies
         run: |
-          sudo apt update
-          sudo apt install -y build-essential cmake git libqt5opengl5-dev libqt5svg5-dev libqt5x11extras5-dev libxcb-keysyms1-dev libxcb-randr0-dev libxcb-shm0-dev libxcb-xfixes0-dev libx11-dev libx11-xcb-dev libxcomposite-dev libxdamage-dev libxext-dev libxinerama-dev libxrandr-dev libxrender-dev libxslt1-dev libxtst-dev pkg-config qtbase5-dev qtbase5-private-dev libxcb-cursor-dev libxcb-ewmh-dev libxcb-icccm4-dev libxcb-keysyms1-dev libxcb-randr0-dev libxcb-render-util0-dev libxcb-xinerama0-dev libxcb-xkb-dev libxcb-xrm-dev libxcb-xtest0-dev libxcb-xv0-dev libxcb1-dev libxcomposite-dev libxcursor-dev libxinerama-dev libxkbcommon-dev libxrandr-dev libxrender-dev libxtst-dev mesa-common-dev ninja-build python3
+          sudo apt-get update
+          sudo apt-get install -y libdrm-rockchip1 libmali-rockchip librockchip-mpp1 librockchip-vpu0 libv4l-dev
 
-      - name: Clone MPP repository
-        run: |
-          git clone https://github.com/rockchip-linux/mpp.git
-          cd mpp
-          git submodule update --init --recursive
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v1
 
-      - name: Build and install MPP
-        run: |
-          cd mpp
-          mkdir build
-          cd build
-          cmake ..
-          make
-          sudo make install
+      - name: Set up Docker
+        uses: docker/setup-buildx-action@v1
 
-      - name: Install OBS dependencies
+      - name: Build MPP
         run: |
-          sudo apt install -y ffmpeg libavcodec-dev libavdevice-dev libavfilter-dev libavformat-dev libavutil-dev libpostproc-dev libswresample-dev libswscale-dev libva-dev libx264-dev libx265-dev libxcb-shm0-dev libxcb-xfixes0-dev libxcb-shape0-dev libxcb-xinerama0-dev libfdk-aac-dev libpulse-dev libjack-jackd2-dev libspeexdsp-dev libpulse-dev
+          docker buildx create --use
+          docker buildx build --platform linux/arm64 -t zxctw/mpp:latest https://github.com/rockchip-linux/mpp.git
 
-      - name: Clone OBS repository
+      - name: Build OBS with MPP
         run: |
-          git clone https://github.com/zxctw/obs-studio.git
-          cd obs-studio
-          git submodule update --init --recursive
+          docker buildx create --use
+          docker buildx build --platform linux/arm64 -t zxctw/obs-studio:latest --build-arg MPP_PATH=./mpp .
 
-      - name: Build OBS
+      - name: Create deb package
         run: |
-          cd obs-studio
-          mkdir build
-          cd build
-          cmake -DUNIX_STRUCTURE=1 -DCMAKE_INSTALL_PREFIX=/usr ..
-          make -j$(nproc)
-          make package
+          docker run --rm -v $(pwd):/workspace zxctw/obs-studio:latest /bin/bash -c "cp /root/obs-studio/build/rpm/obs-studio-*.rpm /workspace"
 
       - name: Upload deb package
         uses: actions/upload-artifact@v2
         with:
-          name: obs-deb-package
-          path: obs-studio/build/package
+          name: obs-studio-deb
+          path: ./obs-studio-*.deb
