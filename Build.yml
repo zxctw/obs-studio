@@ -7,23 +7,32 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    
+    env:
+      CI: 'true'
+      DISPLAY: ':99'
+
     steps:
     - name: Check out code
       uses: actions/checkout@v2
-    
-    - name: Set up QEMU
-      uses: docker/setup-qemu-action@v1
-    
-    - name: Set up Docker
-      uses: docker/setup-buildx-action@v1
-    
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y xvfb pulseaudio
+
+    - name: Set up Xvfb
+      run: |
+        Xvfb :99 -screen 0 1280x720x24 +extension GLX +render -noreset -nolisten tcp -nolisten unix &
+        export PULSE_SERVER="tcp:localhost:9997"
+
     - name: Build OBS
       run: |
         git clone https://github.com/obsproject/obs-studio.git
         cd obs-studio
-        docker buildx build --file Dockerfile --platform linux/arm64 -t myusername/obs-studio:latest .
-    
+        mkdir build && cd build
+        cmake ..
+        make -j$(nproc)
+
     - name: Package OBS as .deb
       run: |
         mkdir -p deb-package/DEBIAN
@@ -36,7 +45,7 @@ jobs:
         echo "" >> deb-package/DEBIAN/control
         dpkg-deb --build deb-package
         mv deb-package.deb obs-studio-arm64.deb
-    
+
     - name: Upload OBS .deb file
       uses: actions/upload-artifact@v2
       with:
