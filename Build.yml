@@ -3,51 +3,90 @@ on:
   push:
     branches:
       - main
+  pull_request:
+    branches:
+      - main
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    env:
-      CI: 'true'
-      DISPLAY: ':99'
 
     steps:
-    - name: Check out code
-      uses: actions/checkout@v2
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v1
 
-    - name: Install dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y xvfb pulseaudio
+      - name: Set up Docker
+        uses: docker/setup-buildx-action@v1
 
-    - name: Set up Xvfb
-      run: |
-        Xvfb :99 -screen 0 1280x720x24 +extension GLX +render -noreset -nolisten tcp -nolisten unix &
-        export PULSE_SERVER="tcp:localhost:9997"
+      - name: Checkout repository
+        uses: actions/checkout@v2
 
-    - name: Build OBS
-      run: |
-        git clone https://github.com/obsproject/obs-studio.git
-        cd obs-studio
-        mkdir build && cd build
-        cmake ..
-        make -j$(nproc)
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            checkinstall \
+            cmake \
+            git \
+            libasound2-dev \
+            libavcodec-dev \
+            libavdevice-dev \
+            libavfilter-dev \
+            libavformat-dev \
+            libavutil-dev \
+            libcurl4-openssl-dev \
+            libfdk-aac-dev \
+            libfontconfig-dev \
+            libfreetype6-dev \
+            libgl1-mesa-dev \
+            libjack-jackd2-dev \
+            libjansson-dev \
+            libjpeg-dev \
+            libluajit-5.1-dev \
+            libmbedtls-dev \
+            libmbedtls12 \
+            libobs-dev \
+            libopus-dev \
+            libpulse-dev \
+            libqt5x11extras5-dev \
+            libspeexdsp-dev \
+            libswresample-dev \
+            libswscale-dev \
+            libudev-dev \
+            libv4l-dev \
+            libvlc-dev \
+            libx264-dev \
+            libxcb-shm0-dev \
+            libxcb-xinerama0-dev \
+            libxcb1-dev \
+            libxcomposite-dev \
+            libxinerama-dev \
+            libxrandr-dev \
+            meson \
+            ninja-build \
+            pkg-config \
+            python3-dev \
+            qtbase5-dev \
+            qttools5-dev \
+            qttools5-dev-tools \
+            swig \
+            g++-aarch64-linux-gnu \
+            gcc-aarch64-linux-gnu \
+            libc6-dev-arm64-cross \
+            libegl1-mesa-dev \
+            libgles2-mesa-dev
 
-    - name: Package OBS as .deb
-      run: |
-        mkdir -p deb-package/DEBIAN
-        touch deb-package/DEBIAN/control
-        echo "Package: obs-studio" >> deb-package/DEBIAN/control
-        echo "Version: 1.0" >> deb-package/DEBIAN/control
-        echo "Architecture: arm64" >> deb-package/DEBIAN/control
-        echo "Maintainer: Your Name <your.email@example.com>" >> deb-package/DEBIAN/control
-        echo "Description: OBS Studio" >> deb-package/DEBIAN/control
-        echo "" >> deb-package/DEBIAN/control
-        dpkg-deb --build deb-package
-        mv deb-package.deb obs-studio-arm64.deb
+      - name: Build OBS
+        run: |
+          git clone --recursive https://github.com/obsproject/obs-studio.git
+          cd obs-studio
+          mkdir build && cd build
+          cmake -DUNIX_STRUCTURE=1 -DCMAKE_TOOLCHAIN_FILE=../cmake/Platform/Unix-Arm64.cmake ..
+          make -j$(nproc)
+          sudo checkinstall --default --pkgname=obs-studio --fstrans=no --backup=no --pkgversion="$(date +'%Y%m%d')" -D -y
 
-    - name: Upload OBS .deb file
-      uses: actions/upload-artifact@v2
-      with:
-        name: obs-studio-arm64.deb
-        path: obs-studio-arm64.deb
+      - name: Create deb package
+        run: |
+          mkdir deb
+          cp obs-studio*.deb deb/
