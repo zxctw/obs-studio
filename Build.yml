@@ -1,9 +1,7 @@
 name: Build OBS
+
 on:
   push:
-    branches:
-      - main
-  pull_request:
     branches:
       - main
 
@@ -13,80 +11,51 @@ jobs:
 
     steps:
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v1
+        uses: docker/setup-qemu-action@v2
 
-      - name: Set up Docker
+      - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v1
 
-      - name: Checkout repository
+      - name: Check out repository
         uses: actions/checkout@v2
 
-      - name: Install build dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            build-essential \
-            checkinstall \
-            cmake \
-            git \
-            libasound2-dev \
-            libavcodec-dev \
-            libavdevice-dev \
-            libavfilter-dev \
-            libavformat-dev \
-            libavutil-dev \
-            libcurl4-openssl-dev \
-            libfdk-aac-dev \
-            libfontconfig-dev \
-            libfreetype6-dev \
-            libgl1-mesa-dev \
-            libjack-jackd2-dev \
-            libjansson-dev \
-            libjpeg-dev \
-            libluajit-5.1-dev \
-            libmbedtls-dev \
-            libmbedtls12 \
-            libobs-dev \
-            libopus-dev \
-            libpulse-dev \
-            libqt5x11extras5-dev \
-            libspeexdsp-dev \
-            libswresample-dev \
-            libswscale-dev \
-            libudev-dev \
-            libv4l-dev \
-            libvlc-dev \
-            libx264-dev \
-            libxcb-shm0-dev \
-            libxcb-xinerama0-dev \
-            libxcb1-dev \
-            libxcomposite-dev \
-            libxinerama-dev \
-            libxrandr-dev \
-            meson \
-            ninja-build \
-            pkg-config \
-            python3-dev \
-            qtbase5-dev \
-            qttools5-dev \
-            qttools5-dev-tools \
-            swig \
-            g++-aarch64-linux-gnu \
-            gcc-aarch64-linux-gnu \
-            libc6-dev-arm64-cross \
-            libegl1-mesa-dev \
-            libgles2-mesa-dev
+      - name: Set up Docker Buildx builder
+        run: docker buildx create --use
 
       - name: Build OBS
         run: |
-          git clone --recursive https://github.com/obsproject/obs-studio.git
-          cd obs-studio
-          mkdir build && cd build
-          cmake -DUNIX_STRUCTURE=1 -DOBS_VERSION_OVERRIDE=27.0.0-rc1 -DCMAKE_BUILD_TYPE=Release -DBUILD_BROWSER_PLUGIN=OFF -DBUILD_LUA=OFF -DBUILD_JACK=OFF -DENABLE_WAYLAND=OFF -DENABLE_ALSA=OFF -DENABLE_PULSEAUDIO=OFF -DENABLE_JACK=OFF -DENABLE_ELGATO=OFF -DENABLE_DECKLINK=OFF -DENABLE_VST=OFF -DENABLE_BROWSER=OFF -DENABLE_PYTHON=OFF -DENABLE_XSHM=OFF -DENABLE_LIBX264=OFF -DENABLE_LIBX265=OFF -DENABLE_FFMPEG=OFF -DENABLE_V4L2=OFF -DENABLE_V4L2_VP8=OFF -DENABLE_V4L2_MPEG=OFF -DENABLE_V4L2_JPEG=OFF -DENABLE_V4L2_HEVC=OFF -DENABLE_V4L2_MJPEG=OFF -DENABLE_V4L2_VP9=OFF -DENABLE_V4L2_AV1=OFF -DENABLE_INSTALL_SCRIPTING_LANGUAGE=OFF ..
-          make -j$(nproc)
-          sudo checkinstall --default --pkgname=obs-studio --fstrans=no --backup=no --pkgversion="$(date +'%Y%m%d')" -D -y
+          docker buildx build \
+            --platform linux/arm64 \
+            --build-arg CROSS_COMPILE="aarch64-linux-gnu-" \
+            --build-arg CROSS_ARCH="aarch64" \
+            --build-arg GCC_VERSION="10" \
+            -t zxctw/obs-aarch64 \
+            --output "type=docker" \
+            .
 
-      - name: Create deb package
+      - name: Extract OBS deb package
         run: |
-          mkdir deb
-          cp obs-studio*.deb deb/
+          docker run --rm -d --name obs-container myusername/obs-aarch64 sleep infinity
+          docker cp obs-container:/root/obs-studio.deb .
+          docker rm -f obs-container
+
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: v1.0
+          release_name: Release v1.0
+          draft: false
+          prerelease: false
+
+      - name: Upload OBS deb package
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./obs-studio.deb
+          asset_name: obs-studio.deb
+          asset_content_type: application/octet-stream
