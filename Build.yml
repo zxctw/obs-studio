@@ -23,4 +23,13 @@ jobs:
           mkdir build
           cd build
           cmake ..
-          make -j$(nproc)
+          VERBOSE=1 make -j$(nproc)
+      
+      - name: Install checkinstall
+        run: |
+          sudo apt-get install -y checkinstall
+      
+      - name: Create deb package
+        run: |
+          cd build
+          sudo checkinstall --default --pkgname=obs --pkgversion="$(git describe --abbrev=0 --tags)" --pkglicense=GPL --pakdir=../
