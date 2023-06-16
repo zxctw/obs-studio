@@ -1,4 +1,4 @@
-name: Build OBS
+name: Build OBS for AARCH64
 
 on:
   push:
@@ -7,55 +7,20 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
 
     steps:
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v2
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v1
-
-      - name: Check out repository
+      - name: Checkout repository
         uses: actions/checkout@v2
 
-      - name: Set up Docker Buildx builder
-        run: docker buildx create --use
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake build-essential libqt5x11extras5-dev libudev-dev libv4l-dev libpulse-dev libjack-jackd2-dev libavcodec-dev libavformat-dev libswscale-dev libavutil-dev libavfilter-dev libcurl4-openssl-dev libfontconfig1-dev libx11-dev libxext-dev libxfixes-dev libxi-dev libxrandr-dev libdbus-1-dev libbz2-dev liblzma-dev libarchive-dev libgl1-mesa-dev libmbedtls-dev
 
       - name: Build OBS
         run: |
-          docker buildx build \
-            --platform linux/arm64 \
-            --build-arg CROSS_COMPILE="aarch64-linux-gnu-" \
-            --build-arg CROSS_ARCH="aarch64" \
-            --build-arg GCC_VERSION="10" \
-            -t zxctw/obs-aarch64 \
-            --output "type=docker" \
-            .
-
-      - name: Extract OBS deb package
-        run: |
-          docker run --rm -d --name obs-container myusername/obs-aarch64 sleep infinity
-          docker cp obs-container:/root/obs-studio.deb .
-          docker rm -f obs-container
-
-      - name: Create Release
-        id: create_release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: v1.0
-          release_name: Release v1.0
-          draft: false
-          prerelease: false
-
-      - name: Upload OBS deb package
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./obs-studio.deb
-          asset_name: obs-studio.deb
-          asset_content_type: application/octet-stream
+          mkdir build
+          cd build
+          cmake ..
+          make -j$(nproc)
